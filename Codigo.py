@@ -36,7 +36,7 @@ COLOR_OK = "#00C853"
 COLOR_NOK = "#E53935"
 
 # --- 1. CONFIGURACIÓN DE HARDWARE (GPIO) ---
-led = LED(17)
+led = LED(17, initial_value=True)  # initial_value=True = GPIO HIGH al inicio (relay inactivo)
 sensor_pulso = Button(4, pull_up=False)
 
 # Entradas de seguridad
@@ -366,7 +366,7 @@ def refrescar_gui():
 def cerrar():
     global hilo_activo
     hilo_activo = False 
-    led.off()
+    led.on()  # GPIO HIGH = relay inactivo (circuito activo-bajo)
     sensor_pulso.close()
     if barrera_conectada: barrera.close()
     if paro_conectado: paro_emergencia.close()
