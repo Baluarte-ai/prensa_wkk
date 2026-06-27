@@ -191,15 +191,24 @@ def exportar_a_excel():
         for col in range(1, len(headers) + 1):
             ws.column_dimensions[chr(64 + col)].width = 15
         
+        # Desactivar fullscreen temporalmente para que el diálogo sea visible en la tablet
+        ventana.attributes('-fullscreen', False)
+        ventana.update()
+        
         # Diálogo "Guardar como" (detecta unidades externas/USB)
         fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = filedialog.asksaveasfilename(
+            parent=ventana,
             title="Guardar registros como...",
             initialdir=SCRIPT_DIR,
             initialfile=f"registros_prensa_{fecha_str}.xlsx",
             defaultextension=".xlsx",
             filetypes=[("Excel", "*.xlsx"), ("Todos los archivos", "*.*")]
         )
+        
+        # Reactivar fullscreen
+        ventana.attributes('-fullscreen', True)
+        
         if not filename:  # El usuario canceló
             return
         wb.save(filename)
@@ -353,10 +362,10 @@ def refrescar_gui():
     if barrera_conectada:
         if barrera.is_pressed:
             canvas.itemconfig(indicador_barrera, fill=COLOR_NOK)
-            lbl_barrera_estado.config(text="ACTIVO", fg=COLOR_NOK)
+            lbl_barrera_estado.config(text="¡ACTIVADO!", fg=COLOR_NOK)
         else:
             canvas.itemconfig(indicador_barrera, fill=COLOR_OK)
-            lbl_barrera_estado.config(text="INACTIVO", fg=COLOR_OK)
+            lbl_barrera_estado.config(text="NORMAL", fg=COLOR_OK)
     
     if paro_conectado:
         if paro_emergencia.is_pressed:
