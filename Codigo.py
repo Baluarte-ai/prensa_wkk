@@ -195,12 +195,24 @@ def exportar_a_excel():
         ventana.attributes('-fullscreen', False)
         ventana.update()
         
+        # Detectar si hay una USB conectada en la Raspberry Pi
+        initial_dir = SCRIPT_DIR
+        media_user_path = "/media/baluarte_admin1"
+        try:
+            if os.path.exists(media_user_path):
+                subdirs = [os.path.join(media_user_path, d) for d in os.listdir(media_user_path) 
+                           if os.path.isdir(os.path.join(media_user_path, d))]
+                if subdirs:
+                    initial_dir = subdirs[0] # Abre directamente en la primera USB encontrada
+        except Exception:
+            pass
+            
         # Diálogo "Guardar como" (detecta unidades externas/USB)
         fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = filedialog.asksaveasfilename(
             parent=ventana,
             title="Guardar registros como...",
-            initialdir=SCRIPT_DIR,
+            initialdir=initial_dir,
             initialfile=f"registros_prensa_{fecha_str}.xlsx",
             defaultextension=".xlsx",
             filetypes=[("Excel", "*.xlsx"), ("Todos los archivos", "*.*")]
