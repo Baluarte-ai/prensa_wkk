@@ -191,17 +191,17 @@ def exportar_a_excel():
         for col in range(1, len(headers) + 1):
             ws.column_dimensions[chr(64 + col)].width = 15
         
-        # Guardar archivo con diálogo "Guardar como"
+        # Diálogo "Guardar como" (detecta unidades externas/USB)
         fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = filedialog.asksaveasfilename(
             title="Guardar registros como...",
-            initialdir="/media/",
+            initialdir=SCRIPT_DIR,
             initialfile=f"registros_prensa_{fecha_str}.xlsx",
             defaultextension=".xlsx",
             filetypes=[("Excel", "*.xlsx"), ("Todos los archivos", "*.*")]
         )
-        if not filename:
-            return  # El usuario canceló
+        if not filename:  # El usuario canceló
+            return
         wb.save(filename)
         messagebox.showinfo("Exportar Excel", f"Archivo exportado exitosamente:\n{filename}")
         
@@ -281,7 +281,8 @@ def recepcion_pulso():
     canvas.itemconfig(indicador_pulso, fill="#2196F3") 
     estado_label.config(text="Monitoreando carga...")
 
-# NOTA: sensor_pulso.when_pressed se asigna al final, después de que la GUI esté lista
+# NOTA: El callback del sensor se registra en la sección 8,
+# DESPUÉS de construir la GUI, para evitar pulsos espurios al iniciar.
 
 def reset_contadores():
     global piezas_ok, piezas_nok
@@ -683,12 +684,9 @@ ventana.protocol("WM_DELETE_WINDOW", cerrar)
 hilo_modbus = threading.Thread(target=tarea_modbus_alta_velocidad, daemon=True)
 hilo_modbus.start()
 
-# Activar sensor de pulso DESPUÉS de que la GUI esté lista (evita disparo falso al arrancar)
-def activar_sensor():
-    sensor_pulso.when_pressed = recepcion_pulso
-    print("Sensor de pulso activado.")
-
-ventana.after(1500, activar_sensor)  # Espera 1.5 segundos antes de escuchar pulsos
+# Registrar callback del sensor DESPUÉS de que toda la GUI esté lista
+time.sleep(0.1)  # Pequeña pausa para estabilizar GPIOs
+sensor_pulso.when_pressed = recepcion_pulso
 
 refrescar_gui() 
 ventana.mainloop()
