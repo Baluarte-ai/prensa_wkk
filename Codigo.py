@@ -241,6 +241,11 @@ def exportar_a_excel():
                 messagebox.showerror("Error Crítico", f"No se pudo guardar ni en la USB ni localmente:\n{e_inner}")
         except Exception as e:
             messagebox.showerror("Error", f"Error al guardar el archivo:\n{e}")
+            
+    except ImportError:
+        messagebox.showerror("Error", "Se requiere instalar openpyxl:\npip install openpyxl")
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al exportar:\n{e}")
 
 # --- 4. HILO DE LECTURA (HARDWARE Y MODBUS) ---
 def tarea_modbus_alta_velocidad():
