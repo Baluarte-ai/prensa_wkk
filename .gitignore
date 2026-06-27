@@ -1,0 +1,20 @@
+# Archivos generados
+*.pyc
+__pycache__/
+*.db
+*.xlsx
+
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

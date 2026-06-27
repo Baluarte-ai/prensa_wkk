@@ -1,0 +1,6 @@
+minimalmodbus
+gpiozero
+RPi.GPIO
+matplotlib
+Pillow
+openpyxl
