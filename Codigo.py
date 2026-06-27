@@ -223,13 +223,24 @@ def exportar_a_excel():
         
         if not filename:  # El usuario canceló
             return
-        wb.save(filename)
-        messagebox.showinfo("Exportar Excel", f"Archivo exportado exitosamente:\n{filename}")
-        
-    except ImportError:
-        messagebox.showerror("Error", "Se requiere instalar openpyxl:\npip install openpyxl")
-    except Exception as e:
-        messagebox.showerror("Error", f"Error al exportar:\n{e}")
+            
+        try:
+            wb.save(filename)
+            messagebox.showinfo("Exportar Excel", f"Archivo exportado exitosamente:\n{filename}")
+        except PermissionError:
+            # Respaldar localmente si la USB es de solo lectura
+            respaldo_local = os.path.join(SCRIPT_DIR, os.path.basename(filename))
+            try:
+                wb.save(respaldo_local)
+                messagebox.showwarning(
+                    "Error de Permisos",
+                    f"No se pudo guardar en la ruta seleccionada (posiblemente la USB está protegida o es de solo lectura).\n\n"
+                    f"Se guardó una copia de seguridad local en:\n{respaldo_local}"
+                )
+            except Exception as e_inner:
+                messagebox.showerror("Error Crítico", f"No se pudo guardar ni en la USB ni localmente:\n{e_inner}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al guardar el archivo:\n{e}")
 
 # --- 4. HILO DE LECTURA (HARDWARE Y MODBUS) ---
 def tarea_modbus_alta_velocidad():
