@@ -39,6 +39,19 @@ COLOR_NOK = "#E53935"
 led = LED(17)
 sensor_pulso = Button(4, pull_up=False)
 
+# Entradas de seguridad
+try:
+    barrera = Button(27, pull_up=True)
+    barrera_conectada = True
+except Exception:
+    barrera_conectada = False
+
+try:
+    paro_emergencia = Button(22, pull_up=True)
+    paro_conectado = True
+except Exception:
+    paro_conectado = False
+
 # --- VARIABLES GLOBALES DE CONTROL ---
 hilo_activo = True
 fuerza_actual = 0.0
@@ -49,15 +62,15 @@ valor_corte = 0.0
 piezas_ok = 0
 piezas_nok = 0
 
-umbral_global = 58.0
-min_global = 60.0
+umbral_global = 25.0
+min_global = 61.4
 max_global = 64.4
 
 # --- VARIABLES PARA EL HISTORIAL DE LA GRÁFICA ---
 MAX_PUNTOS = 100  
 datos_fuerza = [0.0] * MAX_PUNTOS
-datos_umbral = [58.0] * MAX_PUNTOS
-datos_min = [60.0] * MAX_PUNTOS
+datos_umbral = [25.0] * MAX_PUNTOS
+datos_min = [61.4] * MAX_PUNTOS
 datos_max = [64.4] * MAX_PUNTOS
 
 # --- 2. CONFIGURACIÓN DE MODBUS (Velocidad Equilibrada) ---
@@ -213,7 +226,7 @@ def tarea_modbus_alta_velocidad():
             # --- EVALUACIÓN A VELOCIDAD DE HARDWARE ---
             if esperando_corte:
                 if fuerza_actual >= umbral_global:
-                    led.off() # Corte de la electroválvula
+                    led.on() # Corte de la electroválvula
                     
                     valor_corte = fuerza_actual
                     if min_global <= fuerza_actual <= max_global:
@@ -238,13 +251,13 @@ def tarea_modbus_alta_velocidad():
 
 # --- 5. FUNCIONES DE INTERFAZ Y PULSO ---
 def encender_led_manual():
-    led.on()
+    led.off()
     canvas.itemconfig(indicador_led, fill=COLOR_OK)
     estado_label.config(text="LED ENCENDIDO MANUAL")
 
 def apagar_led_manual():
     global esperando_corte
-    led.off()
+    led.on()
     canvas.itemconfig(indicador_led, fill=COLOR_NOK)
     canvas.itemconfig(indicador_pulso, fill=COLOR_BORDE)
     esperando_corte = False
@@ -255,7 +268,7 @@ def recepcion_pulso():
     if esperando_corte:
         return
     esperando_corte = True
-    led.on() 
+    led.off() 
     canvas.itemconfig(indicador_led, fill=COLOR_OK)
     canvas.itemconfig(indicador_pulso, fill="#2196F3") 
     estado_label.config(text="Monitoreando carga...")
@@ -305,8 +318,25 @@ def refrescar_gui():
         label_carga.config(text=f"{fuerza_actual:.1f}")
     else:
         label_carga.config(text="Error", fg=COLOR_NOK)
+
+    # 5. Actualizar indicadores de seguridad
+    if barrera_conectada:
+        if barrera.is_pressed:
+            canvas.itemconfig(indicador_barrera, fill=COLOR_OK)
+            lbl_barrera_estado.config(text="ACTIVA", fg=COLOR_OK)
+        else:
+            canvas.itemconfig(indicador_barrera, fill=COLOR_NOK)
+            lbl_barrera_estado.config(text="INACTIVA", fg=COLOR_NOK)
+    
+    if paro_conectado:
+        if paro_emergencia.is_pressed:
+            canvas.itemconfig(indicador_paro, fill=COLOR_NOK)
+            lbl_paro_estado.config(text="¡ACTIVADO!", fg=COLOR_NOK)
+        else:
+            canvas.itemconfig(indicador_paro, fill=COLOR_OK)
+            lbl_paro_estado.config(text="NORMAL", fg=COLOR_OK)
         
-    # 5. Respuesta visual
+    # 6. Respuesta visual de corte
     if evento_corte_ui:
         canvas.itemconfig(indicador_led, fill=COLOR_NOK)
         canvas.itemconfig(indicador_pulso, fill=COLOR_BORDE)
@@ -329,6 +359,8 @@ def cerrar():
     hilo_activo = False 
     led.off()
     sensor_pulso.close()
+    if barrera_conectada: barrera.close()
+    if paro_conectado: paro_emergencia.close()
     ventana.destroy()
 
 
@@ -345,12 +377,12 @@ ventana.bind('<Escape>', lambda e: cerrar())
 # --- Helper: crear tarjeta con borde sutil ---
 def crear_tarjeta(parent, **kwargs):
     return tk.Frame(parent, bg=COLOR_TARJETA, highlightbackground=COLOR_BORDE,
-                    highlightthickness=1, padx=12, pady=8, **kwargs)
+                    highlightthickness=1, padx=18, pady=12, **kwargs)
 
 # ===================================================================
 # HEADER — Logo WKK prominente + título
 # ===================================================================
-header = tk.Frame(ventana, bg=COLOR_TARJETA, height=65)
+header = tk.Frame(ventana, bg=COLOR_TARJETA, height=85)
 header.pack(fill="x", side="top")
 header.pack_propagate(False)
 
@@ -359,7 +391,7 @@ try:
     if PIL_DISPONIBLE:
         wkk_img = Image.open(os.path.join(ASSETS_DIR, "Logo WKK.png"))
         wkk_ratio = wkk_img.width / wkk_img.height
-        wkk_h = 48
+        wkk_h = 62
         wkk_w = int(wkk_h * wkk_ratio)
         wkk_img = wkk_img.resize((wkk_w, wkk_h), RESAMPLE_METHOD)
         wkk_photo = ImageTk.PhotoImage(wkk_img)
@@ -370,33 +402,33 @@ try:
         raise ImportError("PIL no disponible")
 except Exception as e:
     print(f"No se pudo cargar logo WKK: {e}")
-    wkk_label = tk.Label(header, text="WKK", font=("Helvetica", 26, "bold"),
+    wkk_label = tk.Label(header, text="WKK", font=("Helvetica", 34, "bold"),
                          fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA)
     wkk_label.pack(side="left", padx=(18, 10))
 
 # Separador vertical decorativo
-sep_v = tk.Frame(header, bg=COLOR_VERDE_WKK, width=3, height=40)
-sep_v.pack(side="left", padx=(0, 15), pady=12)
+sep_v = tk.Frame(header, bg=COLOR_VERDE_WKK, width=3, height=55)
+sep_v.pack(side="left", padx=(0, 20), pady=15)
 
 titulo_header = tk.Label(header, text="Sistema de Control de Prensa",
-                         font=("Helvetica", 18, "bold"), fg=COLOR_TEXTO, bg=COLOR_TARJETA)
-titulo_header.pack(side="left", pady=10)
+                         font=("Helvetica", 24, "bold"), fg=COLOR_TEXTO, bg=COLOR_TARJETA)
+titulo_header.pack(side="left", pady=15)
 
 # Botón cerrar
-btn_salir = tk.Button(header, text="✕", font=("Helvetica", 14, "bold"),
-                      fg=COLOR_TEXTO_SEC, bg=COLOR_TARJETA, bd=0, padx=12,
+btn_salir = tk.Button(header, text="✕", font=("Helvetica", 18, "bold"),
+                      fg=COLOR_TEXTO_SEC, bg=COLOR_TARJETA, bd=0, padx=18, pady=8,
                       activebackground=COLOR_NOK, activeforeground="white",
                       command=cerrar)
-btn_salir.pack(side="right", padx=15)
+btn_salir.pack(side="right", padx=20)
 
 # Línea de acento verde bajo el header
-accent_top = tk.Frame(ventana, bg=COLOR_VERDE_WKK, height=3)
+accent_top = tk.Frame(ventana, bg=COLOR_VERDE_WKK, height=4)
 accent_top.pack(fill="x", side="top")
 
 # ===================================================================
 # FOOTER — Logo Baluarte pequeño + estado del sistema
 # ===================================================================
-footer = tk.Frame(ventana, bg=COLOR_TARJETA, height=38)
+footer = tk.Frame(ventana, bg=COLOR_TARJETA, height=50)
 footer.pack(fill="x", side="bottom")
 footer.pack_propagate(False)
 
@@ -409,7 +441,7 @@ try:
     if PIL_DISPONIBLE:
         bal_img = Image.open(os.path.join(ASSETS_DIR, "Logo Horizontal sin fondo.png"))
         bal_ratio = bal_img.width / bal_img.height
-        bal_h = 24
+        bal_h = 32
         bal_w = int(bal_h * bal_ratio)
         bal_img = bal_img.resize((bal_w, bal_h), RESAMPLE_METHOD)
         bal_photo = ImageTk.PhotoImage(bal_img)
@@ -425,19 +457,19 @@ except Exception as e:
     bal_label.pack(side="left", padx=12)
 
 # Estado del sistema (en el footer)
-estado_label = tk.Label(footer, text="SISTEMA LISTO", font=("Helvetica", 11, "bold"),
+estado_label = tk.Label(footer, text="SISTEMA LISTO", font=("Helvetica", 14, "bold"),
                         fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA)
-estado_label.pack(side="right", padx=18, pady=6)
+estado_label.pack(side="right", padx=24, pady=10)
 
 # ===================================================================
 # ÁREA DE CONTENIDO PRINCIPAL
 # ===================================================================
 content = tk.Frame(ventana, bg=COLOR_FONDO)
-content.pack(fill="both", expand=True, padx=8, pady=6)
+content.pack(fill="both", expand=True, padx=14, pady=10)
 
 # --- Panel Izquierdo (Controles) ---
-frame_izquierdo = tk.Frame(content, bg=COLOR_FONDO, width=360)
-frame_izquierdo.pack(side="left", fill="y", padx=(0, 6))
+frame_izquierdo = tk.Frame(content, bg=COLOR_FONDO, width=520)
+frame_izquierdo.pack(side="left", fill="y", padx=(0, 10))
 frame_izquierdo.pack_propagate(False)
 
 # --- Panel Derecho (Gráfica) ---
@@ -453,14 +485,14 @@ card_fuerza = crear_tarjeta(frame_izquierdo)
 card_fuerza.pack(fill="x", pady=(0, 5))
 
 lbl_titulo_fuerza = tk.Label(card_fuerza, text="FUERZA / PRESIÓN ACTUAL",
-                             font=("Helvetica", 9, "bold"), fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA)
-lbl_titulo_fuerza.pack(pady=(0, 4))
+                             font=("Helvetica", 13, "bold"), fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA)
+lbl_titulo_fuerza.pack(pady=(0, 6))
 
-frame_display = tk.Frame(card_fuerza, bg="#1B2838", padx=15, pady=6,
-                         highlightbackground=COLOR_VERDE_WKK, highlightthickness=2)
+frame_display = tk.Frame(card_fuerza, bg="#1B2838", padx=20, pady=10,
+                         highlightbackground=COLOR_VERDE_WKK, highlightthickness=3)
 frame_display.pack(fill="x")
 
-label_carga = tk.Label(frame_display, text="0.0", font=("Helvetica", 44, "bold"),
+label_carga = tk.Label(frame_display, text="0.0", font=("Helvetica", 64, "bold"),
                        fg="#00E676", bg="#1B2838")
 label_carga.pack()
 
@@ -468,113 +500,139 @@ label_carga.pack()
 card_params = crear_tarjeta(frame_izquierdo)
 card_params.pack(fill="x", pady=(0, 5))
 
-tk.Label(card_params, text="PARÁMETROS", font=("Helvetica", 9, "bold"),
-         fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack(pady=(0, 4))
+tk.Label(card_params, text="PARÁMETROS", font=("Helvetica", 13, "bold"),
+         fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack(pady=(0, 6))
 
 frame_params_grid = tk.Frame(card_params, bg=COLOR_TARJETA)
 frame_params_grid.pack(fill="x")
 
 # Umbral
-tk.Label(frame_params_grid, text="Umbral de Corte:", font=("Helvetica", 10),
-         fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=0, column=0, sticky="e", pady=2, padx=(0, 8))
-entry_umbral = tk.Entry(frame_params_grid, font=("Helvetica", 12), width=8, justify="center",
+tk.Label(frame_params_grid, text="Umbral de Corte:", font=("Helvetica", 13),
+         fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=0, column=0, sticky="e", pady=4, padx=(0, 12))
+entry_umbral = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
                         bg="#F8F9FA", fg=COLOR_TEXTO, insertbackground=COLOR_TEXTO,
-                        highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=2)
-entry_umbral.insert(0, "58.0")
-entry_umbral.grid(row=0, column=1, pady=2, sticky="w")
+                        highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=3)
+entry_umbral.insert(0, "25.0")
+entry_umbral.grid(row=0, column=1, pady=4, sticky="w")
 
 # Mínimo
-tk.Label(frame_params_grid, text="Mínimo OK:", font=("Helvetica", 10),
-         fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=1, column=0, sticky="e", pady=2, padx=(0, 8))
-entry_min = tk.Entry(frame_params_grid, font=("Helvetica", 12), width=8, justify="center",
+tk.Label(frame_params_grid, text="Mínimo OK:", font=("Helvetica", 13),
+         fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=1, column=0, sticky="e", pady=4, padx=(0, 12))
+entry_min = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
                      bg="#F8F9FA", fg=COLOR_TEXTO, insertbackground=COLOR_TEXTO,
-                     highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=2)
-entry_min.insert(0, "60.0")
-entry_min.grid(row=1, column=1, pady=2, sticky="w")
+                     highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=3)
+entry_min.insert(0, "61.4")
+entry_min.grid(row=1, column=1, pady=4, sticky="w")
 
 # Máximo
-tk.Label(frame_params_grid, text="Máximo OK:", font=("Helvetica", 10),
-         fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=2, column=0, sticky="e", pady=2, padx=(0, 8))
-entry_max = tk.Entry(frame_params_grid, font=("Helvetica", 12), width=8, justify="center",
+tk.Label(frame_params_grid, text="Máximo OK:", font=("Helvetica", 13),
+         fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=2, column=0, sticky="e", pady=4, padx=(0, 12))
+entry_max = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
                      bg="#F8F9FA", fg=COLOR_TEXTO, insertbackground=COLOR_TEXTO,
-                     highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=2)
+                     highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=3)
 entry_max.insert(0, "64.4")
-entry_max.grid(row=2, column=1, pady=2, sticky="w")
+entry_max.grid(row=2, column=1, pady=4, sticky="w")
 
 # ─── Tarjeta 3: Calidad ───────────────────────────────────────────
 card_calidad = crear_tarjeta(frame_izquierdo)
 card_calidad.pack(fill="x", pady=(0, 5))
 
-tk.Label(card_calidad, text="CALIDAD", font=("Helvetica", 9, "bold"),
-         fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack(pady=(0, 4))
+tk.Label(card_calidad, text="CALIDAD", font=("Helvetica", 13, "bold"),
+         fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack(pady=(0, 6))
 
 # Último valor registrado
 frame_ultimo = tk.Frame(card_calidad, bg=COLOR_TARJETA)
 frame_ultimo.pack(fill="x")
-tk.Label(frame_ultimo, text="Último valor:", font=("Helvetica", 10),
-         fg=COLOR_TEXTO_SEC, bg=COLOR_TARJETA).pack(side="left", padx=(0, 8))
-label_ultimo_valor = tk.Label(frame_ultimo, text="--.-", font=("Helvetica", 15, "bold"),
+tk.Label(frame_ultimo, text="Último valor:", font=("Helvetica", 13),
+         fg=COLOR_TEXTO_SEC, bg=COLOR_TARJETA).pack(side="left", padx=(0, 10))
+label_ultimo_valor = tk.Label(frame_ultimo, text="--.-", font=("Helvetica", 20, "bold"),
                               fg=COLOR_TEXTO, bg=COLOR_TARJETA)
 label_ultimo_valor.pack(side="left")
 
 # Contadores OK / NOK
 frame_contadores = tk.Frame(card_calidad, bg=COLOR_TARJETA)
-frame_contadores.pack(fill="x", pady=6)
+frame_contadores.pack(fill="x", pady=8)
 
-label_ok = tk.Label(frame_contadores, text="OK: 0", font=("Helvetica", 12, "bold"),
-                    fg="white", bg=COLOR_OK, pady=5)
-label_ok.pack(side="left", padx=(0, 6), expand=True, fill="x")
+label_ok = tk.Label(frame_contadores, text="OK: 0", font=("Helvetica", 16, "bold"),
+                    fg="white", bg=COLOR_OK, pady=8)
+label_ok.pack(side="left", padx=(0, 8), expand=True, fill="x")
 
-label_nok = tk.Label(frame_contadores, text="NOK: 0", font=("Helvetica", 12, "bold"),
-                     fg="white", bg=COLOR_NOK, pady=5)
+label_nok = tk.Label(frame_contadores, text="NOK: 0", font=("Helvetica", 16, "bold"),
+                     fg="white", bg=COLOR_NOK, pady=8)
 label_nok.pack(side="left", expand=True, fill="x")
 
 # Reset
-btn_reset = tk.Button(card_calidad, text="↺  Reset Contadores", font=("Helvetica", 9),
-                      fg=COLOR_TEXTO_SEC, bg="#F1F3F5", bd=0, pady=4,
+btn_reset = tk.Button(card_calidad, text="↺  Reset Contadores", font=("Helvetica", 12),
+                      fg=COLOR_TEXTO_SEC, bg="#F1F3F5", bd=0, pady=6,
                       activebackground=COLOR_BORDE, command=reset_contadores)
-btn_reset.pack(fill="x", pady=(3, 0))
+btn_reset.pack(fill="x", pady=(5, 0))
 
 # ─── Tarjeta 4: Indicadores y Controles ───────────────────────────
 card_controles = crear_tarjeta(frame_izquierdo)
 card_controles.pack(fill="x", pady=(0, 5))
 
-tk.Label(card_controles, text="CONTROLES", font=("Helvetica", 9, "bold"),
-         fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack(pady=(0, 3))
+tk.Label(card_controles, text="CONTROLES", font=("Helvetica", 13, "bold"),
+         fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack(pady=(0, 5))
 
-# Indicadores LED (Canvas)
+# Indicadores LED + Seguridad (Canvas)
 frame_indicadores = tk.Frame(card_controles, bg=COLOR_TARJETA)
-frame_indicadores.pack(fill="x", pady=2)
+frame_indicadores.pack(fill="x", pady=4)
 
-canvas = tk.Canvas(frame_indicadores, width=220, height=45, bg=COLOR_TARJETA,
+canvas = tk.Canvas(frame_indicadores, width=480, height=60, bg=COLOR_TARJETA,
                    highlightthickness=0)
 canvas.pack()
 
-canvas.create_text(55, 8, text="Pulso (Pin 4)", font=("Helvetica", 8, "bold"), fill=COLOR_TEXTO_SEC)
-indicador_pulso = canvas.create_oval(22, 16, 88, 43, fill=COLOR_BORDE, outline=COLOR_TEXTO_SEC, width=1)
+# Indicador Pulso
+canvas.create_text(60, 10, text="Pulso", font=("Helvetica", 10, "bold"), fill=COLOR_TEXTO_SEC)
+indicador_pulso = canvas.create_oval(28, 20, 92, 55, fill=COLOR_BORDE, outline=COLOR_TEXTO_SEC, width=2)
 
-canvas.create_text(165, 8, text="Estado LED", font=("Helvetica", 8, "bold"), fill=COLOR_TEXTO_SEC)
-indicador_led = canvas.create_oval(132, 16, 198, 43, fill=COLOR_NOK, outline=COLOR_TEXTO_SEC, width=1)
+# Indicador LED
+canvas.create_text(180, 10, text="LED", font=("Helvetica", 10, "bold"), fill=COLOR_TEXTO_SEC)
+indicador_led = canvas.create_oval(148, 20, 212, 55, fill=COLOR_NOK, outline=COLOR_TEXTO_SEC, width=2)
+
+# Indicador Barrera
+canvas.create_text(300, 10, text="Barrera", font=("Helvetica", 10, "bold"), fill=COLOR_TEXTO_SEC)
+indicador_barrera = canvas.create_oval(268, 20, 332, 55, fill=COLOR_BORDE, outline=COLOR_TEXTO_SEC, width=2)
+
+# Indicador Paro de Emergencia
+canvas.create_text(420, 10, text="Paro Emerg.", font=("Helvetica", 10, "bold"), fill=COLOR_TEXTO_SEC)
+indicador_paro = canvas.create_oval(388, 20, 452, 55, fill=COLOR_OK, outline=COLOR_TEXTO_SEC, width=2)
+
+# Etiquetas de estado para Barrera y Paro
+frame_estados_seg = tk.Frame(card_controles, bg=COLOR_TARJETA)
+frame_estados_seg.pack(fill="x", pady=(0, 4))
+
+tk.Label(frame_estados_seg, text="Barrera:", font=("Helvetica", 11),
+         fg=COLOR_TEXTO_SEC, bg=COLOR_TARJETA).pack(side="left", padx=(60, 4))
+lbl_barrera_estado = tk.Label(frame_estados_seg, text="---", font=("Helvetica", 11, "bold"),
+                              fg=COLOR_TEXTO_SEC, bg=COLOR_TARJETA)
+lbl_barrera_estado.pack(side="left", padx=(0, 30))
+
+tk.Label(frame_estados_seg, text="Paro:", font=("Helvetica", 11),
+         fg=COLOR_TEXTO_SEC, bg=COLOR_TARJETA).pack(side="left", padx=(0, 4))
+lbl_paro_estado = tk.Label(frame_estados_seg, text="---", font=("Helvetica", 11, "bold"),
+                           fg=COLOR_TEXTO_SEC, bg=COLOR_TARJETA)
+lbl_paro_estado.pack(side="left")
 
 # Botones Encender / Apagar
 frame_botones = tk.Frame(card_controles, bg=COLOR_TARJETA)
-frame_botones.pack(fill="x", pady=4)
+frame_botones.pack(fill="x", pady=6)
 
-btn_encender = tk.Button(frame_botones, text="● Encender", font=("Helvetica", 10, "bold"),
-                         fg="white", bg=COLOR_OK, bd=0, pady=7,
+btn_encender = tk.Button(frame_botones, text="● Encender", font=("Helvetica", 13, "bold"),
+                         fg="white", bg=COLOR_OK, bd=0, pady=10,
                          activebackground="#00A844", command=encender_led_manual)
-btn_encender.pack(side="left", expand=True, fill="x", padx=(0, 4))
+btn_encender.pack(side="left", expand=True, fill="x", padx=(0, 6))
 
-btn_apagar = tk.Button(frame_botones, text="■ Apagar", font=("Helvetica", 10, "bold"),
-                       fg="white", bg=COLOR_NOK, bd=0, pady=7,
+btn_apagar = tk.Button(frame_botones, text="■ Apagar", font=("Helvetica", 13, "bold"),
+                       fg="white", bg=COLOR_NOK, bd=0, pady=10,
                        activebackground="#C62828", command=apagar_led_manual)
-btn_apagar.pack(side="left", expand=True, fill="x", padx=(4, 0))
+btn_apagar.pack(side="left", expand=True, fill="x", padx=(6, 0))
 
 # Botón Exportar Excel
-btn_exportar = tk.Button(card_controles, text="📊  Exportar a Excel", font=("Helvetica", 10, "bold"),
-                         fg="white", bg=COLOR_VERDE_WKK, bd=0, pady=8,
+btn_exportar = tk.Button(card_controles, text="📊  Exportar a Excel", font=("Helvetica", 13, "bold"),
+                         fg="white", bg=COLOR_VERDE_WKK, bd=0, pady=10,
                          activebackground=COLOR_VERDE_OSCURO, command=exportar_a_excel)
-btn_exportar.pack(fill="x", pady=(6, 0))
+btn_exportar.pack(fill="x", pady=(8, 0))
 
 # ===================================================================
 # PANEL DERECHO — Gráfica en tiempo real
@@ -583,14 +641,14 @@ card_grafica = crear_tarjeta(frame_derecho)
 card_grafica.pack(fill="both", expand=True)
 
 tk.Label(card_grafica, text="COMPORTAMIENTO DE FUERZA VS SETPOINTS",
-         font=("Helvetica", 9, "bold"), fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack(pady=(0, 4))
+         font=("Helvetica", 13, "bold"), fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack(pady=(0, 6))
 
-figura = Figure(dpi=85)
+figura = Figure(dpi=100)
 figura.patch.set_facecolor(COLOR_TARJETA)
 ax = figura.add_subplot(111)
 ax.set_facecolor("#FAFAFA")
-ax.set_xlabel("Muestras en Tiempo Real", fontsize=9, color=COLOR_TEXTO_SEC)
-ax.set_ylabel("Fuerza / Presión", fontsize=9, color=COLOR_TEXTO_SEC)
+ax.set_xlabel("Muestras en Tiempo Real", fontsize=12, color=COLOR_TEXTO_SEC)
+ax.set_ylabel("Fuerza / Presión", fontsize=12, color=COLOR_TEXTO_SEC)
 ax.set_ylim(-2, 105) 
 ax.grid(True, linestyle="--", alpha=0.3, color="#ADB5BD")
 
@@ -599,13 +657,13 @@ ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 ax.spines['left'].set_color(COLOR_BORDE)
 ax.spines['bottom'].set_color(COLOR_BORDE)
-ax.tick_params(colors=COLOR_TEXTO_SEC, labelsize=8)
+ax.tick_params(colors=COLOR_TEXTO_SEC, labelsize=10)
 
 linea_fuerza, = ax.plot(datos_fuerza, label="Fuerza Actual", color=COLOR_VERDE_WKK, linewidth=2.5)
 linea_umbral, = ax.plot(datos_umbral, label="Umbral Corte", color="#FF9800", linestyle="--", linewidth=1.5)
 linea_min, = ax.plot(datos_min, label="Límite Mínimo OK", color="#2196F3", linestyle=":", linewidth=1.5)
 linea_max, = ax.plot(datos_max, label="Límite Máximo OK", color="#9C27B0", linestyle=":", linewidth=1.5)
-ax.legend(loc="upper left", fontsize=8, framealpha=0.9, edgecolor=COLOR_BORDE)
+ax.legend(loc="upper left", fontsize=11, framealpha=0.9, edgecolor=COLOR_BORDE)
 figura.tight_layout(pad=2)
 
 canvas_grafica = FigureCanvasTkAgg(figura, master=card_grafica)
