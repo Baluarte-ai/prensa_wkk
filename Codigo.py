@@ -39,15 +39,15 @@ COLOR_NOK = "#E53935"
 led = LED(17, initial_value=True)  # initial_value=True = GPIO HIGH al inicio (relay inactivo)
 sensor_pulso = Button(4, pull_up=False)
 
-# Entradas de seguridad
+# Entradas de seguridad (Pin 21 y Pin 22, activo-alto / pull_up=False)
 try:
-    barrera = Button(27, pull_up=True)
+    barrera = Button(21, pull_up=False)
     barrera_conectada = True
 except Exception:
     barrera_conectada = False
 
 try:
-    paro_emergencia = Button(22, pull_up=True)
+    paro_emergencia = Button(22, pull_up=False)
     paro_conectado = True
 except Exception:
     paro_conectado = False
@@ -230,9 +230,14 @@ def tarea_modbus_alta_velocidad():
             if f_calc > FUERZA_MAXIMA: f_calc = FUERZA_MAXIMA
             
             fuerza_actual = f_calc
-            
-            # --- EVALUACIÓN A VELOCIDAD DE HARDWARE ---
+              # --- EVALUACIÓN A VELOCIDAD DE HARDWARE ---
             if esperando_corte:
+                # Protección redundante en hilo de alta velocidad
+                if (barrera_conectada and barrera.is_pressed) or (paro_conectado and paro_emergencia.is_pressed):
+                    led.on() # Apagar electroválvula inmediatamente
+                    esperando_corte = False
+                    continue
+
                 if fuerza_actual >= umbral_global:
                     led.on() # Corte de la electroválvula
                     
@@ -258,7 +263,19 @@ def tarea_modbus_alta_velocidad():
         time.sleep(0.005)
 
 # --- 5. FUNCIONES DE INTERFAZ Y PULSO ---
+def detener_por_seguridad():
+    global esperando_corte
+    led.on()  # Apagar pistón (inactivo)
+    esperando_corte = False
+    canvas.itemconfig(indicador_led, fill=COLOR_NOK)
+    canvas.itemconfig(indicador_pulso, fill=COLOR_BORDE)
+    estado_label.config(text="DETENIDO POR SEGURIDAD", fg=COLOR_NOK)
+
 def encender_led_manual():
+    # Evitar acción si la seguridad está activa
+    if (barrera_conectada and barrera.is_pressed) or (paro_conectado and paro_emergencia.is_pressed):
+        estado_label.config(text="BLOQUEADO: Seguridad Activa", fg=COLOR_NOK)
+        return
     led.off()
     canvas.itemconfig(indicador_led, fill=COLOR_OK)
     estado_label.config(text="LED ENCENDIDO MANUAL")
@@ -274,6 +291,10 @@ def apagar_led_manual():
 def recepcion_pulso():
     global esperando_corte
     if esperando_corte:
+        return
+    # Evitar acción si la seguridad está activa
+    if (barrera_conectada and barrera.is_pressed) or (paro_conectado and paro_emergencia.is_pressed):
+        estado_label.config(text="BLOQUEADO: Seguridad Activa", fg=COLOR_NOK)
         return
     esperando_corte = True
     led.off() 
@@ -328,14 +349,14 @@ def refrescar_gui():
     else:
         label_carga.config(text="Error", fg=COLOR_NOK)
 
-    # 5. Actualizar indicadores de seguridad
+    # 5. Actualizar indicadores de seguridad (Activo-Alto: Pressed = Red/Warning)
     if barrera_conectada:
         if barrera.is_pressed:
-            canvas.itemconfig(indicador_barrera, fill=COLOR_OK)
-            lbl_barrera_estado.config(text="ACTIVA", fg=COLOR_OK)
-        else:
             canvas.itemconfig(indicador_barrera, fill=COLOR_NOK)
-            lbl_barrera_estado.config(text="INACTIVA", fg=COLOR_NOK)
+            lbl_barrera_estado.config(text="ACTIVO", fg=COLOR_NOK)
+        else:
+            canvas.itemconfig(indicador_barrera, fill=COLOR_OK)
+            lbl_barrera_estado.config(text="INACTIVO", fg=COLOR_OK)
     
     if paro_conectado:
         if paro_emergencia.is_pressed:
@@ -687,6 +708,10 @@ hilo_modbus.start()
 # Registrar callback del sensor DESPUÉS de que toda la GUI esté lista
 time.sleep(0.1)  # Pequeña pausa para estabilizar GPIOs
 sensor_pulso.when_pressed = recepcion_pulso
+if barrera_conectada:
+    barrera.when_pressed = detener_por_seguridad
+if paro_conectado:
+    paro_emergencia.when_pressed = detener_por_seguridad
 
 refrescar_gui() 
 ventana.mainloop()
