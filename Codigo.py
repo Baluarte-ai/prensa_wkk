@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox, filedialog, ttk
 import minimalmodbus
 from gpiozero import LED, Button
 import threading
@@ -137,6 +137,120 @@ def registrar_corte(valor, resultado, umbral, minimo, maximo):
         conn.close()
     except Exception as e:
         print(f"Error al registrar en DB: {e}")
+
+def abrir_previsualizacion():
+    """Muestra una ventana modal con los registros actuales antes de exportar."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, fecha, hora, valor_fuerza, resultado, umbral, minimo_ok, maximo_ok FROM registros ORDER BY id DESC")
+        registros = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        messagebox.showerror("Error de Base de Datos", f"No se pudo leer la base de datos:\n{e}")
+        return
+
+    if not registros:
+        messagebox.showinfo("Previsualización", "No hay registros en la base de datos para mostrar.")
+        return
+
+    # Desactivar fullscreen temporalmente para mejor interacción modal en la tablet
+    ventana.attributes('-fullscreen', False)
+    ventana.update()
+
+    preview_win = tk.Toplevel(ventana)
+    preview_win.title("WKK - Previsualización de Registros")
+    preview_win.configure(bg=COLOR_FONDO)
+    
+    # Tamaño y centrado para la tablet 1900x1200
+    w_width, w_height = 950, 650
+    screen_w = preview_win.winfo_screenwidth()
+    screen_h = preview_win.winfo_screenheight()
+    pos_x = (screen_w - w_width) // 2
+    pos_y = (screen_h - w_height) // 2
+    preview_win.geometry(f"{w_width}x{w_height}+{pos_x}+{pos_y}")
+    preview_win.transient(ventana)
+    preview_win.grab_set()
+
+    # Título del modal
+    header_frame = tk.Frame(preview_win, bg=COLOR_TARJETA, pady=12)
+    header_frame.pack(fill="x")
+    tk.Label(header_frame, text="REGISTROS DE CORTE ALMACENADOS", font=("Helvetica", 14, "bold"),
+             fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA).pack()
+
+    # Contenedor para tabla y scrollbar
+    table_frame = tk.Frame(preview_win, bg=COLOR_FONDO, padx=15, pady=15)
+    table_frame.pack(fill="both", expand=True)
+
+    # Configuración de estilos para el Treeview (tabla)
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure("Treeview",
+                    background=COLOR_TARJETA,
+                    foreground=COLOR_TEXTO,
+                    rowheight=35,
+                    fieldbackground=COLOR_TARJETA,
+                    font=("Helvetica", 11))
+    style.configure("Treeview.Heading",
+                    background=COLOR_VERDE_WKK,
+                    foreground="white",
+                    font=("Helvetica", 11, "bold"))
+    style.map("Treeview.Heading", background=[('active', COLOR_VERDE_OSCURO)])
+
+    columns = ("id", "fecha", "hora", "fuerza", "resultado", "umbral", "min", "max")
+    tree = ttk.Treeview(table_frame, columns=columns, show="headings", style="Treeview")
+    
+    # Definir encabezados
+    headers = {
+        "id": "ID", "fecha": "Fecha", "hora": "Hora",
+        "fuerza": "Fuerza (kg)", "resultado": "Resultado",
+        "umbral": "Umbral", "min": "Mínimo OK", "max": "Máximo OK"
+    }
+    for col, txt in headers.items():
+        tree.heading(col, text=txt)
+        tree.column(col, anchor="center", width=100)
+    tree.column("id", width=60)
+    tree.column("resultado", width=120)
+
+    # Scrollbar
+    scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar.set)
+    
+    tree.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    # Configurar tags de color para las filas OK y NOK
+    tree.tag_configure("OK", background="#E8F5E9", foreground="#2E7D32")
+    tree.tag_configure("NOK", background="#FFEBEE", foreground="#C62828")
+
+    # Insertar datos
+    for reg in registros:
+        res = reg[4] # "OK" o "NOK"
+        tree.insert("", "end", values=reg, tags=(res,))
+
+    # Botonera inferior
+    btn_frame = tk.Frame(preview_win, bg=COLOR_TARJETA, pady=15)
+    btn_frame.pack(fill="x", side="bottom")
+
+    def ejecutar_exportado():
+        preview_win.destroy()
+        exportar_a_excel()
+
+    def cancelar_modal():
+        preview_win.destroy()
+        ventana.attributes('-fullscreen', True)
+
+    btn_guardar = tk.Button(btn_frame, text="📊  Exportar a Excel", font=("Helvetica", 12, "bold"),
+                            fg="white", bg=COLOR_VERDE_WKK, bd=0, padx=20, pady=10,
+                            activebackground=COLOR_VERDE_OSCURO, command=ejecutar_exportado)
+    btn_guardar.pack(side="left", padx=(40, 20))
+
+    btn_cancelar = tk.Button(btn_frame, text="✕  Cerrar", font=("Helvetica", 12, "bold"),
+                             fg=COLOR_TEXTO_SEC, bg="#F1F3F5", bd=0, padx=20, pady=10,
+                             activebackground=COLOR_BORDE, command=cancelar_modal)
+    btn_cancelar.pack(side="right", padx=(20, 40))
+
+    preview_win.protocol("WM_DELETE_WINDOW", cancelar_modal)
 
 def exportar_a_excel():
     """Exporta todos los registros de la base de datos a un archivo Excel."""
@@ -698,7 +812,7 @@ btn_apagar.pack(side="left", expand=True, fill="x", padx=(6, 0))
 # Botón Exportar Excel
 btn_exportar = tk.Button(card_controles, text="📊  Exportar a Excel", font=("Helvetica", 13, "bold"),
                          fg="white", bg=COLOR_VERDE_WKK, bd=0, pady=10,
-                         activebackground=COLOR_VERDE_OSCURO, command=exportar_a_excel)
+                         activebackground=COLOR_VERDE_OSCURO, command=abrir_previsualizacion)
 btn_exportar.pack(fill="x", pady=(8, 0))
 
 # ===================================================================
