@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import minimalmodbus
 from gpiozero import LED, Button
 import threading
@@ -191,9 +191,17 @@ def exportar_a_excel():
         for col in range(1, len(headers) + 1):
             ws.column_dimensions[chr(64 + col)].width = 15
         
-        # Guardar archivo
+        # Guardar archivo con diálogo "Guardar como"
         fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = os.path.join(SCRIPT_DIR, f"registros_prensa_{fecha_str}.xlsx")
+        filename = filedialog.asksaveasfilename(
+            title="Guardar registros como...",
+            initialdir=SCRIPT_DIR,
+            initialfile=f"registros_prensa_{fecha_str}.xlsx",
+            defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx"), ("Todos los archivos", "*.*")]
+        )
+        if not filename:
+            return  # El usuario canceló
         wb.save(filename)
         messagebox.showinfo("Exportar Excel", f"Archivo exportado exitosamente:\n{filename}")
         
