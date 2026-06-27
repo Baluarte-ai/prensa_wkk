@@ -195,7 +195,7 @@ def exportar_a_excel():
         fecha_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = filedialog.asksaveasfilename(
             title="Guardar registros como...",
-            initialdir=SCRIPT_DIR,
+            initialdir="/media/",
             initialfile=f"registros_prensa_{fecha_str}.xlsx",
             defaultextension=".xlsx",
             filetypes=[("Excel", "*.xlsx"), ("Todos los archivos", "*.*")]
@@ -281,7 +281,7 @@ def recepcion_pulso():
     canvas.itemconfig(indicador_pulso, fill="#2196F3") 
     estado_label.config(text="Monitoreando carga...")
 
-sensor_pulso.when_pressed = recepcion_pulso
+# NOTA: sensor_pulso.when_pressed se asigna al final, después de que la GUI esté lista
 
 def reset_contadores():
     global piezas_ok, piezas_nok
@@ -682,6 +682,13 @@ ventana.protocol("WM_DELETE_WINDOW", cerrar)
 
 hilo_modbus = threading.Thread(target=tarea_modbus_alta_velocidad, daemon=True)
 hilo_modbus.start()
+
+# Activar sensor de pulso DESPUÉS de que la GUI esté lista (evita disparo falso al arrancar)
+def activar_sensor():
+    sensor_pulso.when_pressed = recepcion_pulso
+    print("Sensor de pulso activado.")
+
+ventana.after(1500, activar_sensor)  # Espera 1.5 segundos antes de escuchar pulsos
 
 refrescar_gui() 
 ventana.mainloop()
