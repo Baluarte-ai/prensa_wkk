@@ -39,9 +39,9 @@ COLOR_NOK = "#E53935"
 led = LED(17, initial_value=True)  # initial_value=True = GPIO HIGH al inicio (relay inactivo)
 sensor_pulso = Button(4, pull_up=False)
 
-# Entradas de seguridad (Pin 21 y Pin 22, activo-alto / pull_up=False)
+# Entradas de seguridad (Pin 26 y Pin 22, activo-alto / pull_up=False)
 try:
-    barrera = Button(21, pull_up=False)
+    barrera = Button(26, pull_up=False)
     barrera_conectada = True
 except Exception:
     barrera_conectada = False
