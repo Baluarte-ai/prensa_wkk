@@ -835,7 +835,7 @@ ax = figura.add_subplot(111)
 ax.set_facecolor("#FAFAFA")
 ax.set_xlabel("Muestras en Tiempo Real", fontsize=12, color=COLOR_TEXTO_SEC)
 ax.set_ylabel("Fuerza / Presión", fontsize=12, color=COLOR_TEXTO_SEC)
-ax.set_ylim(-2, 105) 
+ax.set_ylim(-20, 1050) 
 ax.grid(True, linestyle="--", alpha=0.3, color="#ADB5BD")
 
 # Bordes limpios y modernos
