@@ -200,16 +200,25 @@ def tarea_modbus_alta_velocidad():
             # Fuerza en reposo es casi cero (ruido menor a 1 kg)
             f_calc_kg = random.uniform(0.0, 1.0)
         elif esperando_corte and not timer_activo:
-            # Pistón bajando, la fuerza sube rápido
-            f_calc_kg = 5.0 + (_sim_t % 5.0) * 15.0
-            if f_calc_kg > 65.0:
-                f_calc_kg = 65.0
+            # Pistón bajando, la fuerza sube rápido hasta 50 kg
+            f_calc_kg = 5.0 + (_sim_t % 5.0) * 20.0
+            if f_calc_kg > 50.0:
+                f_calc_kg = 50.0
         else:
-            # Timer activo: fuerza estable cerca del límite (63 kg)
-            f_calc_kg = 63.0 + random.uniform(-0.5, 0.5)
-            # Meter un pico transitorio ocasional > 90 kg
-            if random.random() < 0.1:
-                f_calc_kg = 95.0
+            # Timer activo: simular perfil
+            elapsed = time.time() - start_timer_time
+            if elapsed <= 1.0:
+                # Primer segundo: 50 kg
+                f_calc_kg = 50.0 + random.uniform(-0.2, 0.2)
+            elif elapsed <= 2.0:
+                # Segundo segundo: avanza hasta 60 kg
+                f_calc_kg = 60.0 + random.uniform(-0.2, 0.2)
+            else:
+                # Último tiempo: si estamos en los últimos 0.3 segundos del timer, metemos el pico de 80 a 86 kg
+                if tiempo_timer - elapsed <= 0.3:
+                    f_calc_kg = random.uniform(80.0, 86.0)
+                else:
+                    f_calc_kg = 60.0 + random.uniform(-0.2, 0.2)
                 
         if f_calc_kg < 0: f_calc_kg = 0.0
         if f_calc_kg > FUERZA_MAXIMA: f_calc_kg = FUERZA_MAXIMA
