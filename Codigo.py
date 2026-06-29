@@ -56,22 +56,24 @@ except Exception:
 hilo_activo = True
 fuerza_actual = 0.0
 esperando_corte = False
+timer_activo = False
+tiempo_timer = 2.0
+limite_ok = 598.2  # 61 kg en Newtons (61 * 9.80665)
+KG_A_N = 9.80665
+UMBRAL_ACTIVACION_N = 10.0 * KG_A_N  # 10 kg en Newtons
+LIMITE_PICO_N = 90.0 * KG_A_N       # 90 kg en Newtons
+muestras_timer = []
+
 evento_corte_ui = False
 tipo_corte = ""
 valor_corte = 0.0
 piezas_ok = 0
 piezas_nok = 0
 
-umbral_global = 25.0
-min_global = 61.4
-max_global = 64.4
-
 # --- VARIABLES PARA EL HISTORIAL DE LA GRÁFICA ---
 MAX_PUNTOS = 100  
 datos_fuerza = [0.0] * MAX_PUNTOS
-datos_umbral = [25.0] * MAX_PUNTOS
-datos_min = [61.4] * MAX_PUNTOS
-datos_max = [64.4] * MAX_PUNTOS
+datos_limite = [598.2] * MAX_PUNTOS
 
 # --- 2. CONFIGURACIÓN DE MODBUS (Velocidad Equilibrada) ---
 try:
@@ -365,6 +367,9 @@ def exportar_a_excel():
 def tarea_modbus_alta_velocidad():
     global fuerza_actual, esperando_corte, evento_corte_ui
     global tipo_corte, valor_corte, piezas_ok, piezas_nok
+    global timer_activo, muestras_timer
+    
+    start_timer_time = 0.0
     
     while hilo_activo:
         if not modbus_conectado:
@@ -375,36 +380,65 @@ def tarea_modbus_alta_velocidad():
             instrument.serial.reset_input_buffer() 
             lectura_bruta = instrument.read_register(0, 2, functioncode=3)
             
-            f_calc = ((lectura_bruta - LECTURA_CERO) / (LECTURA_MAXIMA - LECTURA_CERO)) * FUERZA_MAXIMA
+            f_calc_kg = ((lectura_bruta - LECTURA_CERO) / (LECTURA_MAXIMA - LECTURA_CERO)) * FUERZA_MAXIMA
             
-            if f_calc < 0.1: f_calc = 0.0
-            if f_calc > FUERZA_MAXIMA: f_calc = FUERZA_MAXIMA
+            if f_calc_kg < 0.1: f_calc_kg = 0.0
+            if f_calc_kg > FUERZA_MAXIMA: f_calc_kg = FUERZA_MAXIMA
             
-            fuerza_actual = f_calc
-              # --- EVALUACIÓN A VELOCIDAD DE HARDWARE ---
+            fuerza_actual = f_calc_kg * KG_A_N
+            
+            # --- EVALUACIÓN A VELOCIDAD DE HARDWARE ---
             if esperando_corte:
                 # Protección redundante en hilo de alta velocidad
                 if (barrera_conectada and barrera.is_pressed) or (paro_conectado and paro_emergencia.is_pressed):
                     led.on() # Apagar electroválvula inmediatamente
                     esperando_corte = False
+                    timer_activo = False
                     continue
 
-                if fuerza_actual >= umbral_global:
-                    led.on() # Corte de la electroválvula
+                if not timer_activo:
+                    # Activar timer cuando la fuerza supere el umbral de activación (10 kg)
+                    if fuerza_actual >= UMBRAL_ACTIVACION_N:
+                        timer_activo = True
+                        start_timer_time = time.time()
+                        muestras_timer = [fuerza_actual]
+                else:
+                    # Timer está activo: recolectar muestras
+                    muestras_timer.append(fuerza_actual)
                     
-                    valor_corte = fuerza_actual
-                    if min_global <= fuerza_actual <= max_global:
-                        piezas_ok += 1
-                        tipo_corte = "OK"
-                    else:
-                        piezas_nok += 1
-                        tipo_corte = "NOK"
-                    
-                    # Registrar en base de datos
-                    registrar_corte(valor_corte, tipo_corte, umbral_global, min_global, max_global)
+                    # Verificar si el timer ha expirado
+                    if time.time() - start_timer_time >= tiempo_timer:
+                        led.on() # Corte/retorno de la electroválvula
                         
-                    esperando_corte = False
-                    evento_corte_ui = True
+                        # Tomar las últimas 8 a 10 lecturas
+                        lecturas_estables = muestras_timer[-10:] if len(muestras_timer) >= 10 else muestras_timer
+                        
+                        # Filtrar picos > 90 kg (LIMITE_PICO_N) si no son constantes (menos del 50% de las lecturas)
+                        picos = [val for val in lecturas_estables if val > LIMITE_PICO_N]
+                        if len(lecturas_estables) > 0 and (len(picos) / len(lecturas_estables)) < 0.5:
+                            lecturas_filtradas = [val for val in lecturas_estables if val <= LIMITE_PICO_N]
+                        else:
+                            lecturas_filtradas = lecturas_estables
+                        
+                        # Calcular promedio de lecturas estables/filtradas
+                        if lecturas_filtradas:
+                            valor_corte = sum(lecturas_filtradas) / len(lecturas_filtradas)
+                        else:
+                            valor_corte = fuerza_actual
+                        
+                        if valor_corte >= limite_ok:
+                            piezas_ok += 1
+                            tipo_corte = "OK"
+                        else:
+                            piezas_nok += 1
+                            tipo_corte = "NOK"
+                        
+                        # Registrar en base de datos
+                        registrar_corte(valor_corte, tipo_corte, UMBRAL_ACTIVACION_N, limite_ok, None)
+                            
+                        esperando_corte = False
+                        timer_activo = False
+                        evento_corte_ui = True
                     
         except Exception as e:
             # Si hay un pequeño error de lectura, simplemente lo ignora y sigue intentando
@@ -432,11 +466,12 @@ def encender_led_manual():
     estado_label.config(text="LED ENCENDIDO MANUAL")
 
 def apagar_led_manual():
-    global esperando_corte
+    global esperando_corte, timer_activo
     led.on()
     canvas.itemconfig(indicador_led, fill=COLOR_NOK)
     canvas.itemconfig(indicador_pulso, fill=COLOR_BORDE)
     esperando_corte = False
+    timer_activo = False
     estado_label.config(text="SISTEMA LISTO")
 
 def recepcion_pulso():
@@ -467,38 +502,28 @@ def reset_contadores():
 
 # --- 6. REFRESCO DE INTERFAZ Y GRÁFICA ---
 def refrescar_gui():
-    global evento_corte_ui, umbral_global, min_global, max_global
+    global evento_corte_ui, tiempo_timer, limite_ok
     
     # 1. Leer los Entry
-    try: umbral_global = float(entry_umbral.get())
+    try: tiempo_timer = float(entry_timer.get())
     except ValueError: pass
-    try: min_global = float(entry_min.get())
-    except ValueError: pass
-    try: max_global = float(entry_max.get())
+    try: limite_ok = float(entry_limite_ok.get())
     except ValueError: pass
 
-    # 2. Actualizar datos de la gráfica
+    # 2. Actualizar datos de la gráfica (solo si supera el umbral de 10 kg / 98.1 N para evitar ruido)
+    val_to_plot = fuerza_actual if fuerza_actual > UMBRAL_ACTIVACION_N else 0.0
     datos_fuerza.pop(0)
-    datos_fuerza.append(fuerza_actual)
-    datos_umbral.pop(0)
-    datos_umbral.append(umbral_global)
-    datos_min.pop(0)
-    datos_min.append(min_global)
-    datos_max.pop(0)
-    datos_max.append(max_global)
+    datos_fuerza.append(val_to_plot)
+    datos_limite.pop(0)
+    datos_limite.append(limite_ok)
     
     # 3. Dibujar gráfica
     linea_fuerza.set_ydata(datos_fuerza)
-    linea_umbral.set_ydata(datos_umbral)
-    linea_min.set_ydata(datos_min)
-    linea_max.set_ydata(datos_max)
+    linea_limite.set_ydata(datos_limite)
     canvas_grafica.draw_idle() 
 
-    # 4. Actualizar textos
-    if modbus_conectado:
-        label_carga.config(text=f"{fuerza_actual:.1f}")
-    else:
-        label_carga.config(text="Error", fg=COLOR_NOK)
+    # 4. Actualizar textos (label_carga eliminado para evitar ruido en pantalla)
+    pass
 
     # 5. Actualizar indicadores de seguridad (Activo-Alto: Pressed = Red/Warning)
     if barrera_conectada:
@@ -525,11 +550,11 @@ def refrescar_gui():
         label_nok.config(text=f"NOK: {piezas_nok}")
         
         if tipo_corte == "OK":
-            label_ultimo_valor.config(text=f"{valor_corte:.1f}", fg=COLOR_OK)
-            estado_label.config(text=f"¡Pieza OK! ({valor_corte:.1f})")
+            label_ultimo_valor.config(text=f"{valor_corte:.1f} N", fg=COLOR_OK)
+            estado_label.config(text=f"¡Pieza OK! ({valor_corte:.1f} N)")
         else:
-            label_ultimo_valor.config(text=f"{valor_corte:.1f}", fg=COLOR_NOK)
-            estado_label.config(text=f"¡Pieza NOK! ({valor_corte:.1f})")
+            label_ultimo_valor.config(text=f"{valor_corte:.1f} N", fg=COLOR_NOK)
+            estado_label.config(text=f"¡Pieza NOK! ({valor_corte:.1f} N)")
             
         evento_corte_ui = False
         
@@ -661,21 +686,7 @@ frame_derecho.pack(side="right", fill="both", expand=True)
 # PANEL IZQUIERDO — Tarjetas de control
 # ===================================================================
 
-# ─── Tarjeta 1: Display de Fuerza ─────────────────────────────────
-card_fuerza = crear_tarjeta(frame_izquierdo)
-card_fuerza.pack(fill="x", pady=(0, 5))
-
-lbl_titulo_fuerza = tk.Label(card_fuerza, text="FUERZA / PRESIÓN ACTUAL",
-                             font=("Helvetica", 13, "bold"), fg=COLOR_VERDE_WKK, bg=COLOR_TARJETA)
-lbl_titulo_fuerza.pack(pady=(0, 6))
-
-frame_display = tk.Frame(card_fuerza, bg="#1B2838", padx=20, pady=10,
-                         highlightbackground=COLOR_VERDE_WKK, highlightthickness=3)
-frame_display.pack(fill="x")
-
-label_carga = tk.Label(frame_display, text="0.0", font=("Helvetica", 64, "bold"),
-                       fg="#00E676", bg="#1B2838")
-label_carga.pack()
+# (Tarjeta 1: Display de Fuerza eliminado para evitar ruido en pantalla)
 
 # ─── Tarjeta 2: Parámetros ────────────────────────────────────────
 card_params = crear_tarjeta(frame_izquierdo)
@@ -687,32 +698,23 @@ tk.Label(card_params, text="PARÁMETROS", font=("Helvetica", 13, "bold"),
 frame_params_grid = tk.Frame(card_params, bg=COLOR_TARJETA)
 frame_params_grid.pack(fill="x")
 
-# Umbral
-tk.Label(frame_params_grid, text="Umbral de Corte:", font=("Helvetica", 13),
+# Tiempo Timer
+tk.Label(frame_params_grid, text="Tiempo Timer (s):", font=("Helvetica", 13),
          fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=0, column=0, sticky="e", pady=4, padx=(0, 12))
-entry_umbral = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
+entry_timer = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
                         bg="#F8F9FA", fg=COLOR_TEXTO, insertbackground=COLOR_TEXTO,
                         highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=3)
-entry_umbral.insert(0, "25.0")
-entry_umbral.grid(row=0, column=1, pady=4, sticky="w")
+entry_timer.insert(0, "2.0")
+entry_timer.grid(row=0, column=1, pady=4, sticky="w")
 
-# Mínimo
-tk.Label(frame_params_grid, text="Mínimo OK:", font=("Helvetica", 13),
+# Límite OK (N)
+tk.Label(frame_params_grid, text="Fuerza Mínima OK (N):", font=("Helvetica", 13),
          fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=1, column=0, sticky="e", pady=4, padx=(0, 12))
-entry_min = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
+entry_limite_ok = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
                      bg="#F8F9FA", fg=COLOR_TEXTO, insertbackground=COLOR_TEXTO,
                      highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=3)
-entry_min.insert(0, "61.4")
-entry_min.grid(row=1, column=1, pady=4, sticky="w")
-
-# Máximo
-tk.Label(frame_params_grid, text="Máximo OK:", font=("Helvetica", 13),
-         fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=2, column=0, sticky="e", pady=4, padx=(0, 12))
-entry_max = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
-                     bg="#F8F9FA", fg=COLOR_TEXTO, insertbackground=COLOR_TEXTO,
-                     highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=3)
-entry_max.insert(0, "64.4")
-entry_max.grid(row=2, column=1, pady=4, sticky="w")
+entry_limite_ok.insert(0, "598.2")
+entry_limite_ok.grid(row=1, column=1, pady=4, sticky="w")
 
 # ─── Tarjeta 3: Calidad ───────────────────────────────────────────
 card_calidad = crear_tarjeta(frame_izquierdo)
@@ -840,10 +842,8 @@ ax.spines['left'].set_color(COLOR_BORDE)
 ax.spines['bottom'].set_color(COLOR_BORDE)
 ax.tick_params(colors=COLOR_TEXTO_SEC, labelsize=10)
 
-linea_fuerza, = ax.plot(datos_fuerza, label="Fuerza Actual", color=COLOR_VERDE_WKK, linewidth=2.5)
-linea_umbral, = ax.plot(datos_umbral, label="Umbral Corte", color="#FF9800", linestyle="--", linewidth=1.5)
-linea_min, = ax.plot(datos_min, label="Límite Mínimo OK", color="#2196F3", linestyle=":", linewidth=1.5)
-linea_max, = ax.plot(datos_max, label="Límite Máximo OK", color="#9C27B0", linestyle=":", linewidth=1.5)
+linea_fuerza, = ax.plot(datos_fuerza, label="Fuerza Actual (N)", color=COLOR_VERDE_WKK, linewidth=2.5)
+linea_limite, = ax.plot(datos_limite, label="Límite Mínimo OK (N)", color="#2196F3", linestyle="--", linewidth=1.5)
 ax.legend(loc="upper left", fontsize=11, framealpha=0.9, edgecolor=COLOR_BORDE)
 figura.tight_layout(pad=2)
 
