@@ -193,6 +193,8 @@ def tarea_modbus_alta_velocidad():
     
     start_timer_time = 0.0
     
+    fuerza_target_base = 63.0
+    
     while hilo_activo:
         _sim_t += 0.05
         # Simular lectura de fuerza en kg y convertir a N
@@ -200,25 +202,29 @@ def tarea_modbus_alta_velocidad():
             # Fuerza en reposo es casi cero (ruido menor a 1 kg)
             f_calc_kg = random.uniform(0.0, 1.0)
         elif esperando_corte and not timer_activo:
-            # Pistón bajando, la fuerza sube rápido hasta 50 kg
+            # Pistón bajando, la fuerza sube rápido
             f_calc_kg = 5.0 + (_sim_t % 5.0) * 20.0
-            if f_calc_kg > 50.0:
-                f_calc_kg = 50.0
+            # Al iniciar el ciclo, definimos una fuerza objetivo aleatoria
+            # para que a veces sea OK y a veces NOK
+            if _sim_t % 5.0 < 0.2:
+                fuerza_target_base = random.uniform(55.0, 68.0)
+            if f_calc_kg > fuerza_target_base - 10.0:
+                f_calc_kg = fuerza_target_base - 10.0
         else:
-            # Timer activo: simular perfil
+            # Timer activo: simular perfil aleatorio
             elapsed = time.time() - start_timer_time
             if elapsed <= 1.0:
-                # Primer segundo: 50 kg
-                f_calc_kg = 50.0 + random.uniform(-0.2, 0.2)
+                # Primer segundo: fuerza base - 10 kg
+                f_calc_kg = (fuerza_target_base - 10.0) + random.uniform(-0.5, 0.5)
             elif elapsed <= 2.0:
-                # Segundo segundo: avanza hasta 60 kg
-                f_calc_kg = 60.0 + random.uniform(-0.2, 0.2)
+                # Segundo segundo: avanza hasta la fuerza base
+                f_calc_kg = fuerza_target_base + random.uniform(-0.5, 0.5)
             else:
                 # Último tiempo: si estamos en los últimos 0.3 segundos del timer, metemos el pico de 80 a 86 kg
                 if tiempo_timer - elapsed <= 0.3:
                     f_calc_kg = random.uniform(80.0, 86.0)
                 else:
-                    f_calc_kg = 60.0 + random.uniform(-0.2, 0.2)
+                    f_calc_kg = fuerza_target_base + random.uniform(-0.5, 0.5)
                 
         if f_calc_kg < 0: f_calc_kg = 0.0
         if f_calc_kg > FUERZA_MAXIMA: f_calc_kg = FUERZA_MAXIMA
