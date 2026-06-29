@@ -411,7 +411,13 @@ def tarea_modbus_alta_velocidad():
                         led.on() # Corte/retorno de la electroválvula
                         
                         # Tomar las últimas 8 a 10 lecturas
-                        lecturas_estables = muestras_timer[-10:] if len(muestras_timer) >= 10 else muestras_timer
+                        lecturas_estables = muestras_timer[-10:] if len(muestras_timer) >= 10 else muest                        # Ignorar el último 15% del tiempo (evita picos finales de retracción) y tomar 10 muestras antes de eso
+                        total_muestras = len(muestras_timer)
+                        if total_muestras >= 20:
+                            punto_corte = int(total_muestras * 0.85)
+                            lecturas_estables = muestras_timer[punto_corte - 10 : punto_corte]
+                        else:
+                            lecturas_estables = muestras_timer[-10:] if total_muestras >= 10 else muestras_timer
                         
                         # Filtrar picos drásticos (+/- 10 kg) respecto a la mediana si no son estables
                         if lecturas_estables:
@@ -837,8 +843,8 @@ figura = Figure(dpi=100)
 figura.patch.set_facecolor(COLOR_TARJETA)
 ax = figura.add_subplot(111)
 ax.set_facecolor("#FAFAFA")
-ax.set_xlabel("Muestras en Tiempo Real", fontsize=12, color=COLOR_TEXTO_SEC)
-ax.set_ylabel("Fuerza / Presión", fontsize=12, color=COLOR_TEXTO_SEC)
+ax.set_xlabel("Muestras (Tiempo Real)", fontsize=12, color=COLOR_TEXTO_SEC)
+ax.set_ylabel("Fuerza / Presión (Newtons)", fontsize=12, color=COLOR_TEXTO_SEC)
 ax.set_ylim(-20, 1050) 
 ax.grid(True, linestyle="--", alpha=0.3, color="#ADB5BD")
 
