@@ -63,6 +63,7 @@ esperando_corte = False
 timer_activo = False
 tiempo_timer = 2.0
 limite_ok = 598.2  # 61 kg en Newtons (61 * 9.80665)
+unidad_limite = "kg"
 KG_A_N = 9.80665
 UMBRAL_ACTIVACION_N = 10.0 * KG_A_N  # 10 kg en Newtons
 LIMITE_PICO_N = 90.0 * KG_A_N       # 90 kg en Newtons
@@ -367,6 +368,26 @@ def exportar_a_excel():
     except Exception as e:
         messagebox.showerror("Error", f"Error al exportar:\n{e}")
 
+def cambiar_unidad(event=None):
+    global unidad_limite
+    nueva_unidad = combo_unidad.get()
+    if nueva_unidad == unidad_limite:
+        return
+    try:
+        valor_actual = float(entry_limite_ok.get())
+        if nueva_unidad == "N" and unidad_limite == "kg":
+            nuevo_valor = valor_actual * KG_A_N
+        elif nueva_unidad == "kg" and unidad_limite == "N":
+            nuevo_valor = valor_actual / KG_A_N
+        else:
+            return
+        
+        entry_limite_ok.delete(0, tk.END)
+        entry_limite_ok.insert(0, f"{nuevo_valor:.1f}")
+    except ValueError:
+        pass
+    unidad_limite = nueva_unidad
+
 def filtrar_fuerza_grafica(nueva_fuerza):
     global fuerza_filtrada_grafica, cambio_inicio_tiempo, detectando_cambio
     diff = abs(nueva_fuerza - fuerza_filtrada_grafica)
@@ -528,8 +549,12 @@ def refrescar_gui():
     try: tiempo_timer = float(entry_timer.get())
     except ValueError: pass
     try: 
-        limite_ok_kg = float(entry_limite_ok.get())
-        limite_ok = limite_ok_kg * KG_A_N
+        val_ingresado = float(entry_limite_ok.get())
+        u = combo_unidad.get()
+        if u == "kg":
+            limite_ok = val_ingresado * KG_A_N
+        else:
+            limite_ok = val_ingresado
     except ValueError: 
         pass
 
@@ -731,14 +756,20 @@ entry_timer = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justi
 entry_timer.insert(0, "2.0")
 entry_timer.grid(row=0, column=1, pady=4, sticky="w")
 
-# Límite OK (kg)
-tk.Label(frame_params_grid, text="Fuerza Mínima OK (kg):", font=("Helvetica", 13),
+# Límite OK
+tk.Label(frame_params_grid, text="Fuerza Mínima OK:", font=("Helvetica", 13),
          fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=1, column=0, sticky="e", pady=4, padx=(0, 12))
 entry_limite_ok = tk.Entry(frame_params_grid, font=("Helvetica", 15), width=8, justify="center",
                      bg="#F8F9FA", fg=COLOR_TEXTO, insertbackground=COLOR_TEXTO,
                      highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=3)
 entry_limite_ok.insert(0, "61.0")
 entry_limite_ok.grid(row=1, column=1, pady=4, sticky="w")
+
+# Dropdown de Unidad
+combo_unidad = ttk.Combobox(frame_params_grid, values=["kg", "N"], width=4, font=("Helvetica", 13), state="readonly")
+combo_unidad.set("kg")
+combo_unidad.grid(row=1, column=2, pady=4, padx=(6, 0), sticky="w")
+combo_unidad.bind("<<ComboboxSelected>>", cambiar_unidad)
 
 # ─── Tarjeta 3: Calidad ───────────────────────────────────────────
 card_calidad = crear_tarjeta(frame_izquierdo)
