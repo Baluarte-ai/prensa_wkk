@@ -243,13 +243,13 @@ def tarea_modbus_alta_velocidad():
                 if time.time() - start_timer_time >= tiempo_timer:
                     led.off()
                     
-                    # Ignorar el último 15% del tiempo (evita picos finales de retracción) y tomar 10 muestras antes de eso
+                    # Tomar 10 muestras del centro del timer (donde la presión es estable, evitando inicio y fin)
                     total_muestras = len(muestras_timer)
-                    if total_muestras >= 20:
-                        punto_corte = int(total_muestras * 0.85)
-                        lecturas_estables = muestras_timer[punto_corte - 10 : punto_corte]
+                    if total_muestras >= 12:
+                        centro = total_muestras // 2
+                        lecturas_estables = muestras_timer[centro - 5 : centro + 5]
                     else:
-                        lecturas_estables = muestras_timer[-10:] if total_muestras >= 10 else muestras_timer
+                        lecturas_estables = muestras_timer
                     
                     # Filtrar picos drásticos (+/- 10 kg) respecto a la mediana si no son estables
                     if lecturas_estables:
