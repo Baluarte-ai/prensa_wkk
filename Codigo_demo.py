@@ -305,8 +305,11 @@ def refrescar_gui():
     
     try: tiempo_timer = float(entry_timer.get())
     except ValueError: pass
-    try: limite_ok = float(entry_limite_ok.get())
-    except ValueError: pass
+    try: 
+        limite_ok_kg = float(entry_limite_ok.get())
+        limite_ok = limite_ok_kg * KG_A_N
+    except ValueError: 
+        pass
 
     # Evitar ruido en la gráfica: solo graficar si supera el umbral de activación
     val_to_plot = fuerza_actual if fuerza_actual > UMBRAL_ACTIVACION_N else 0.0
@@ -489,13 +492,13 @@ entry_timer = tk.Entry(frame_params_grid, font=("Helvetica", 12), width=8, justi
 entry_timer.insert(0, "2.0")
 entry_timer.grid(row=0, column=1, pady=2, sticky="w")
 
-# Límite OK (N)
-tk.Label(frame_params_grid, text="Fuerza Mínima OK (N):", font=("Helvetica", 10),
+# Límite OK (kg)
+tk.Label(frame_params_grid, text="Fuerza Mínima OK (kg):", font=("Helvetica", 10),
          fg=COLOR_TEXTO, bg=COLOR_TARJETA).grid(row=1, column=0, sticky="e", pady=2, padx=(0, 8))
 entry_limite_ok = tk.Entry(frame_params_grid, font=("Helvetica", 12), width=8, justify="center",
                      bg="#F8F9FA", fg=COLOR_TEXTO, insertbackground=COLOR_TEXTO,
                      highlightbackground=COLOR_VERDE_WKK, highlightthickness=1, relief="flat", bd=2)
-entry_limite_ok.insert(0, "598.2")
+entry_limite_ok.insert(0, "61.0")
 entry_limite_ok.grid(row=1, column=1, pady=2, sticky="w")
 
 # ─── Tarjeta 3: Calidad ───────────────────────────────────────────
