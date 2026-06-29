@@ -4,7 +4,7 @@ para poder visualizar la UI en Windows.
 NO MODIFICA EL CÓDIGO ORIGINAL. Solo para previsualización.
 """
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import threading
 import time
 import sqlite3
