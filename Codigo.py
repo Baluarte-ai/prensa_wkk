@@ -55,6 +55,10 @@ except Exception:
 # --- VARIABLES GLOBALES DE CONTROL ---
 hilo_activo = True
 fuerza_actual = 0.0
+fuerza_filtrada_grafica = 0.0
+cambio_inicio_tiempo = 0.0
+detectando_cambio = False
+
 esperando_corte = False
 timer_activo = False
 tiempo_timer = 2.0
@@ -363,6 +367,21 @@ def exportar_a_excel():
     except Exception as e:
         messagebox.showerror("Error", f"Error al exportar:\n{e}")
 
+def filtrar_fuerza_grafica(nueva_fuerza):
+    global fuerza_filtrada_grafica, cambio_inicio_tiempo, detectando_cambio
+    diff = abs(nueva_fuerza - fuerza_filtrada_grafica)
+    if diff > 10.0 * KG_A_N:
+        if not detectando_cambio:
+            detectando_cambio = True
+            cambio_inicio_tiempo = time.time()
+        else:
+            if time.time() - cambio_inicio_tiempo >= 1.0:
+                fuerza_filtrada_grafica = nueva_fuerza
+    else:
+        detectando_cambio = False
+        fuerza_filtrada_grafica = nueva_fuerza
+    return fuerza_filtrada_grafica
+
 # --- 4. HILO DE LECTURA (HARDWARE Y MODBUS) ---
 def tarea_modbus_alta_velocidad():
     global fuerza_actual, esperando_corte, evento_corte_ui
@@ -386,6 +405,7 @@ def tarea_modbus_alta_velocidad():
             if f_calc_kg > FUERZA_MAXIMA: f_calc_kg = FUERZA_MAXIMA
             
             fuerza_actual = f_calc_kg * KG_A_N
+            fuerza_filtrada = filtrar_fuerza_grafica(fuerza_actual)
             
             # --- EVALUACIÓN A VELOCIDAD DE HARDWARE ---
             if esperando_corte:
@@ -398,13 +418,13 @@ def tarea_modbus_alta_velocidad():
 
                 if not timer_activo:
                     # Activar timer cuando la fuerza supere el umbral de activación (10 kg)
-                    if fuerza_actual >= UMBRAL_ACTIVACION_N:
+                    if fuerza_filtrada >= UMBRAL_ACTIVACION_N:
                         timer_activo = True
                         start_timer_time = time.time()
-                        muestras_timer = [fuerza_actual]
+                        muestras_timer = [fuerza_filtrada]
                 else:
                     # Timer está activo: recolectar muestras
-                    muestras_timer.append(fuerza_actual)
+                    muestras_timer.append(fuerza_filtrada)
                     
                     # Verificar si el timer ha expirado
                     if time.time() - start_timer_time >= tiempo_timer:
@@ -424,7 +444,7 @@ def tarea_modbus_alta_velocidad():
                         if lecturas_filtradas:
                             valor_corte = sum(lecturas_filtradas) / len(lecturas_filtradas)
                         else:
-                            valor_corte = fuerza_actual
+                            valor_corte = fuerza_filtrada
                         
                         if valor_corte >= limite_ok:
                             piezas_ok += 1
@@ -514,7 +534,8 @@ def refrescar_gui():
         pass
 
     # 2. Actualizar datos de la gráfica (solo si supera el umbral de 10 kg / 98.1 N para evitar ruido)
-    val_to_plot = fuerza_actual if fuerza_actual > UMBRAL_ACTIVACION_N else 0.0
+    fuerza_filtrada = filtrar_fuerza_grafica(fuerza_actual)
+    val_to_plot = fuerza_filtrada if fuerza_filtrada > UMBRAL_ACTIVACION_N else 0.0
     datos_fuerza.pop(0)
     datos_fuerza.append(val_to_plot)
     datos_limite.pop(0)
