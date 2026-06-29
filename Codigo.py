@@ -410,22 +410,13 @@ def tarea_modbus_alta_velocidad():
                     if time.time() - start_timer_time >= tiempo_timer:
                         led.on() # Corte/retorno de la electroválvula
                         
-                        # Tomar 10 muestras del centro del timer (donde la presión es estable, evitando inicio y fin)
-                        total_muestras = len(muestras_timer)
-                        if total_muestras >= 12:
-                            centro = total_muestras // 2
-                            lecturas_estables = muestras_timer[centro - 5 : centro + 5]
-                        else:
-                            lecturas_estables = muestras_timer
+                        # Tomar las últimas 8 a 10 lecturas
+                        lecturas_estables = muestras_timer[-10:] if len(muestras_timer) >= 10 else muestras_timer
                         
-                        # Filtrar picos drásticos (+/- 10 kg) respecto a la mediana si no son estables
-                        if lecturas_estables:
-                            lecturas_ordenadas = sorted(lecturas_estables)
-                            mediana = lecturas_ordenadas[len(lecturas_ordenadas) // 2]
-                            limite_desviacion = 10.0 * KG_A_N
-                            lecturas_filtradas = [val for val in lecturas_estables if abs(val - mediana) <= limite_desviacion]
-                            if not lecturas_filtradas:
-                                lecturas_filtradas = lecturas_estables
+                        # Filtrar picos > 90 kg (LIMITE_PICO_N) si no son constantes (menos del 50% de las lecturas)
+                        picos = [val for val in lecturas_estables if val > LIMITE_PICO_N]
+                        if len(lecturas_estables) > 0 and (len(picos) / len(lecturas_estables)) < 0.5:
+                            lecturas_filtradas = [val for val in lecturas_estables if val <= LIMITE_PICO_N]
                         else:
                             lecturas_filtradas = lecturas_estables
                         
@@ -842,8 +833,7 @@ figura = Figure(dpi=100)
 figura.patch.set_facecolor(COLOR_TARJETA)
 ax = figura.add_subplot(111)
 ax.set_facecolor("#FAFAFA")
-ax.set_xlabel("Muestras (Tiempo Real)", fontsize=12, color=COLOR_TEXTO_SEC)
-ax.set_ylabel("Fuerza / Presión (Newtons)", fontsize=12, color=COLOR_TEXTO_SEC)
+ax.set_xlabel("Muestras en Tiempo Real", fontsize=12, color=COLOR_TEXTO_SEC)
 ax.set_ylim(-20, 1050) 
 ax.grid(True, linestyle="--", alpha=0.3, color="#ADB5BD")
 

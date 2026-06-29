@@ -193,8 +193,6 @@ def tarea_modbus_alta_velocidad():
     
     start_timer_time = 0.0
     
-    fuerza_target_base = 63.0
-    
     while hilo_activo:
         _sim_t += 0.05
         # Simular lectura de fuerza en kg y convertir a N
@@ -203,28 +201,15 @@ def tarea_modbus_alta_velocidad():
             f_calc_kg = random.uniform(0.0, 1.0)
         elif esperando_corte and not timer_activo:
             # Pistón bajando, la fuerza sube rápido
-            f_calc_kg = 5.0 + (_sim_t % 5.0) * 20.0
-            # Al iniciar el ciclo, definimos una fuerza objetivo aleatoria
-            # para que a veces sea OK y a veces NOK
-            if _sim_t % 5.0 < 0.2:
-                fuerza_target_base = random.uniform(55.0, 68.0)
-            if f_calc_kg > fuerza_target_base - 10.0:
-                f_calc_kg = fuerza_target_base - 10.0
+            f_calc_kg = 5.0 + (_sim_t % 5.0) * 15.0
+            if f_calc_kg > 65.0:
+                f_calc_kg = 65.0
         else:
-            # Timer activo: simular perfil aleatorio
-            elapsed = time.time() - start_timer_time
-            if elapsed <= 1.0:
-                # Primer segundo: fuerza base - 10 kg
-                f_calc_kg = (fuerza_target_base - 10.0) + random.uniform(-0.5, 0.5)
-            elif elapsed <= 2.0:
-                # Segundo segundo: avanza hasta la fuerza base
-                f_calc_kg = fuerza_target_base + random.uniform(-0.5, 0.5)
-            else:
-                # Último tiempo: si estamos en los últimos 0.3 segundos del timer, metemos el pico de 80 a 86 kg
-                if tiempo_timer - elapsed <= 0.3:
-                    f_calc_kg = random.uniform(80.0, 86.0)
-                else:
-                    f_calc_kg = fuerza_target_base + random.uniform(-0.5, 0.5)
+            # Timer activo: fuerza estable cerca del límite (63 kg)
+            f_calc_kg = 63.0 + random.uniform(-0.5, 0.5)
+            # Meter un pico transitorio ocasional > 90 kg
+            if random.random() < 0.1:
+                f_calc_kg = 95.0
                 
         if f_calc_kg < 0: f_calc_kg = 0.0
         if f_calc_kg > FUERZA_MAXIMA: f_calc_kg = FUERZA_MAXIMA
@@ -243,22 +228,13 @@ def tarea_modbus_alta_velocidad():
                 if time.time() - start_timer_time >= tiempo_timer:
                     led.off()
                     
-                    # Tomar 10 muestras del centro del timer (donde la presión es estable, evitando inicio y fin)
-                    total_muestras = len(muestras_timer)
-                    if total_muestras >= 12:
-                        centro = total_muestras // 2
-                        lecturas_estables = muestras_timer[centro - 5 : centro + 5]
-                    else:
-                        lecturas_estables = muestras_timer
+                    # Tomar las últimas 8 a 10 lecturas
+                    lecturas_estables = muestras_timer[-10:] if len(muestras_timer) >= 10 else muestras_timer
                     
-                    # Filtrar picos drásticos (+/- 10 kg) respecto a la mediana si no son estables
-                    if lecturas_estables:
-                        lecturas_ordenadas = sorted(lecturas_estables)
-                        mediana = lecturas_ordenadas[len(lecturas_ordenadas) // 2]
-                        limite_desviacion = 10.0 * KG_A_N
-                        lecturas_filtradas = [val for val in lecturas_estables if abs(val - mediana) <= limite_desviacion]
-                        if not lecturas_filtradas:
-                            lecturas_filtradas = lecturas_estables
+                    # Filtrar picos > 90 kg (LIMITE_PICO_N)
+                    picos = [val for val in lecturas_estables if val > LIMITE_PICO_N]
+                    if len(lecturas_estables) > 0 and (len(picos) / len(lecturas_estables)) < 0.5:
+                        lecturas_filtradas = [val for val in lecturas_estables if val <= LIMITE_PICO_N]
                     else:
                         lecturas_filtradas = lecturas_estables
                     
@@ -614,8 +590,8 @@ figura = Figure(dpi=85)
 figura.patch.set_facecolor(COLOR_TARJETA)
 ax = figura.add_subplot(111)
 ax.set_facecolor("#FAFAFA")
-ax.set_xlabel("Muestras (Tiempo Real)", fontsize=9, color=COLOR_TEXTO_SEC)
-ax.set_ylabel("Fuerza / Presión (Newtons)", fontsize=9, color=COLOR_TEXTO_SEC)
+ax.set_xlabel("Muestras en Tiempo Real", fontsize=9, color=COLOR_TEXTO_SEC)
+ax.set_ylabel("Fuerza / Presión", fontsize=9, color=COLOR_TEXTO_SEC)
 ax.set_ylim(-20, 1050) 
 ax.grid(True, linestyle="--", alpha=0.3, color="#ADB5BD")
 
