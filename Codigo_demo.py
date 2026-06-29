@@ -246,10 +246,14 @@ def tarea_modbus_alta_velocidad():
                     # Tomar las últimas 8 a 10 lecturas
                     lecturas_estables = muestras_timer[-10:] if len(muestras_timer) >= 10 else muestras_timer
                     
-                    # Filtrar picos > 90 kg (LIMITE_PICO_N)
-                    picos = [val for val in lecturas_estables if val > LIMITE_PICO_N]
-                    if len(lecturas_estables) > 0 and (len(picos) / len(lecturas_estables)) < 0.5:
-                        lecturas_filtradas = [val for val in lecturas_estables if val <= LIMITE_PICO_N]
+                    # Filtrar picos drásticos (+/- 10 kg) respecto a la mediana si no son estables
+                    if lecturas_estables:
+                        lecturas_ordenadas = sorted(lecturas_estables)
+                        mediana = lecturas_ordenadas[len(lecturas_ordenadas) // 2]
+                        limite_desviacion = 10.0 * KG_A_N
+                        lecturas_filtradas = [val for val in lecturas_estables if abs(val - mediana) <= limite_desviacion]
+                        if not lecturas_filtradas:
+                            lecturas_filtradas = lecturas_estables
                     else:
                         lecturas_filtradas = lecturas_estables
                     
